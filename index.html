@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sci-Road Fighter: แรง ป.5 By Kru Tom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap');
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Chakra Petch', sans-serif; touch-action: none; user-select: none; }
+        canvas { display: block; margin: 0 auto; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; }
+        .modal { pointer-events: auto; }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-white">
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <!-- Top HUD -->
+        <div id="hud" class="w-full p-2 md:p-4 flex justify-between items-start z-10 hidden text-base md:text-xl font-bold text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+            <div>
+                <p class="text-white bg-black/60 px-2 rounded mb-1 border border-gray-600 inline-block">👤 <span id="playerNameDisplay">ผู้เล่น</span></p>
+                <p>คะแนน: <span id="scoreDisplay" class="text-white">0</span></p>
+                <p>ความเร็ว: <span id="speedDisplay" class="text-white">0</span> km/h</p>
+            </div>
+            <div class="text-right">
+                <p>น้ำมัน (FUEL)</p>
+                <div class="w-20 md:w-32 h-4 md:h-5 border-2 border-white bg-gray-800 rounded mt-1 overflow-hidden shadow-lg">
+                    <div id="fuelBar" class="h-full bg-green-500 w-full transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals Container -->
+        <div class="flex-1 flex justify-center items-center">
+            
+            <!-- Login Screen -->
+            <div id="loginScreen" class="modal bg-black/85 p-6 md:p-8 rounded-2xl border-4 border-blue-500 text-center w-[90%] max-w-sm shadow-[0_0_20px_rgba(59,130,246,0.6)]">
+                <h1 class="text-3xl md:text-4xl font-bold text-blue-400 mb-2 uppercase tracking-wider">Sci-Road</h1>
+                <p class="text-xl text-yellow-400 font-bold mb-6">By Kru Tom</p>
+                <input type="text" id="playerName" class="w-full p-3 rounded-lg text-black text-center text-lg outline-none mb-6 font-bold" placeholder="กรอกชื่อของคุณ..." maxlength="12">
+                <button id="startBtn" class="bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-full font-bold text-xl shadow-lg transform transition active:scale-95">เข้าสู่เกม</button>
+            </div>
+
+            <!-- Quiz Screen -->
+            <div id="quizScreen" class="modal hidden bg-blue-900/95 p-4 md:p-6 rounded-2xl border-4 border-yellow-400 text-center w-[95%] max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_30px_rgba(250,204,21,0.6)] flex flex-col">
+                <div class="text-yellow-400 text-3xl md:text-4xl mb-1 animate-bounce">⭐</div>
+                <h2 class="text-xl md:text-2xl font-bold text-white mb-2">คำถามวิทย์ ป.5 (เรื่อง แรง)</h2>
+                
+                <p id="questionText" class="text-sm md:text-base bg-blue-800/80 p-3 rounded-lg mb-3 min-h-[50px] flex items-center justify-center border border-blue-600"></p>
+                
+                <div id="choicesContainer" class="grid grid-cols-1 gap-2"></div>
+                
+                <div id="feedbackText" class="mt-3 text-base md:text-lg font-bold hidden py-2 px-3 rounded-lg"></div>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="gameOverScreen" class="modal hidden bg-red-900/95 p-6 md:p-8 rounded-2xl border-4 border-red-500 text-center w-[90%] max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.6)]">
+                <h1 class="text-4xl md:text-5xl font-bold text-white mb-2 uppercase tracking-widest">Game Over</h1>
+                <p id="gameOverReason" class="text-lg md:text-xl text-red-300 mb-6 font-semibold"></p>
+                <div class="bg-black/50 p-4 rounded-lg mb-6 border border-red-700">
+                    <p class="text-gray-300 text-base mb-1">คะแนนรวม</p>
+                    <p id="finalScore" class="text-4xl md:text-5xl font-bold text-yellow-400">0</p>
+                </div>
+                <button id="restartBtn" class="bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-full font-bold text-xl shadow-lg transform transition active:scale-95">เล่นอีกครั้ง</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- ข้อมูลคำถาม 25 ข้อ ---
+        const scienceQuestions = [
+            { q: "แรงเสียดทานมีผลอย่างไรต่อการเคลื่อนที่ของวัตถุ?", choices: ["ทำให้เคลื่อนที่เร็วขึ้น", "ทำให้เคลื่อนที่ช้าลงหรือหยุด", "ไม่มีผลต่อการเคลื่อนที่", "ทำให้วัตถุลอยขึ้น"], answer: 1 },
+            { q: "ลักษณะพื้นผิวแบบใด ทำให้เกิดแรงเสียดทานมากที่สุด?", choices: ["พื้นกระเบื้องเปียกน้ำ", "พื้นกระจกเรียบ", "พื้นถนนขรุขระ", "พื้นน้ำแข็ง"], answer: 2 },
+            { q: "การกระทำใดเป็นการ 'ลด' แรงเสียดทาน?", choices: ["ใส่รองเท้าสตั๊ดเตะบอล", "หยอดน้ำมันหล่อลื่นที่บานพับ", "ทำลวดลายบนยางรถยนต์", "ทายางสนที่คันชักไวโอลิน"], answer: 1 },
+            { q: "การกระทำใดเป็นการ 'เพิ่ม' แรงเสียดทาน?", choices: ["การเล่นสไลเดอร์น้ำ", "การใช้ลูกปืนในล้อจักรยาน", "การทำลวดลายที่พื้นรองเท้า", "การขัดถูพื้นให้มันวาว"], answer: 2 },
+            { q: "แรงเสียดทานเกิดขึ้นที่บริเวณใด?", choices: ["ภายในเนื้อของวัตถุ", "ผิวสัมผัสระหว่างวัตถุทั้งสอง", "ด้านบนของวัตถุ", "รอบๆ วัตถุ"], answer: 1 },
+            { q: "ข้อใดคือประโยชน์ของแรงเสียดทาน?", choices: ["ทำให้เดินได้โดยไม่ลื่นหกล้ม", "ทำให้เครื่องยนต์ทำงานช้าลง", "ทำให้รองเท้าสึกหรอ", "ทำให้พื้นผิวถนนพังทลาย"], answer: 0 },
+            { q: "ทำไมยางรถยนต์จึงต้องมี 'ดอกยาง'?", choices: ["เพิ่มแรงเสียดทาน ป้องกันลื่นไถล", "ลดแรงเสียดทาน ให้รถวิ่งเร็วขึ้น", "ทำให้ยางมีความนุ่มนวล", "ระบายความร้อนให้ล้อรถ"], answer: 0 },
+            { q: "กิจกรรมใดต้องการแรงเสียดทาน 'น้อยที่สุด'?", choices: ["การปีนเขา", "การวิ่งแข่ง", "การเล่นสเก็ตน้ำแข็ง", "การปั่นจักรยานเสือภูเขา"], answer: 2 },
+            { q: "ทำไมการผลักตู้บนพื้นขรุขระ จึงออกแรงมากกว่าบนพื้นเรียบ?", choices: ["เพราะตู้มีน้ำหนักเพิ่มขึ้น", "เพราะมีแรงเสียดทานมากกว่า", "เพราะแรงโน้มถ่วงเพิ่มขึ้น", "เพราะมีแรงดันอากาศมาก"], answer: 1 },
+            { q: "แรงเสียดทานมีทิศทางอย่างไร?", choices: ["ทิศทางเดียวกับการเคลื่อนที่", "ทิศทางตรงข้ามกับการเคลื่อนที่", "ทิศทางตั้งฉากกับพื้นโลก", "ไม่มีทิศทางที่แน่นอน"], answer: 1 },
+            { q: "การใช้ตลับลูกปืน ในล้อจักรยาน มีผลอย่างไร?", choices: ["ลดแรงเสียดทาน", "เพิ่มแรงเสียดทาน", "เพิ่มน้ำหนักให้จักรยาน", "ลดความเร็วของจักรยาน"], answer: 0 },
+            { q: "เมื่อเตะฟุตบอลไปบนสนาม สักพักจะหยุดกลิ้งเพราะเหตุใด?", choices: ["ลูกบอลหมดพลังงาน", "แรงเสียดทานกับพื้นหญ้า", "แรงดึงดูดของดวงจันทร์", "มีแรงผลักจากอากาศด้านหลัง"], answer: 1 },
+            { q: "การลากเลื่อนบนพื้นน้ำแข็ง อาศัยหลักการใด?", choices: ["การเพิ่มแรงต้าน", "การลดแรงเสียดทาน", "การเพิ่มมวล", "การลดแรงโน้มถ่วง"], answer: 1 },
+            { q: "การออกแบบรถสปอร์ตให้เพรียวลม มีจุดประสงค์เพื่ออะไร?", choices: ["เพื่อความสวยงามเท่านั้น", "เพื่อเพิ่มแรงเสียดทาน", "เพื่อลดแรงต้านของอากาศ", "เพื่อเพิ่มน้ำหนักของรถ"], answer: 2 },
+            { q: "แรงต้านทานของอากาศ จัดเป็นแรงชนิดใด?", choices: ["แรงโน้มถ่วง", "แรงแม่เหล็ก", "แรงไฟฟ้า", "แรงเสียดทาน"], answer: 3 },
+            { q: "แรงโน้มถ่วงของโลก คืออะไร?", choices: ["แรงที่โลกดึงดูดวัตถุเข้าสู่ศูนย์กลาง", "แรงที่วัตถุผลักออกจากโลก", "แรงที่ทำให้เกิดลม", "แรงแม่เหล็กจากขั้วโลก"], answer: 0 },
+            { q: "สิ่งใด 'ไม่มี' ผลต่อขนาดของแรงโน้มถ่วงที่กระทำต่อวัตถุ?", choices: ["มวลของวัตถุ", "ระยะห่างจากศูนย์กลางโลก", "สีของวัตถุ", "ตำแหน่งบนโลก"], answer: 2 },
+            { q: "น้ำหนักของวัตถุ เกิดจากสิ่งใด?", choices: ["แรงเสียดทานของอากาศ", "แรงโน้มถ่วงกระทำต่อมวล", "ปริมาตรของวัตถุ", "อุณหภูมิของวัตถุ"], answer: 1 },
+            { q: "เครื่องมือชนิดใดใช้สำหรับวัดขนาดของแรงและน้ำหนัก?", choices: ["เทอร์โมมิเตอร์", "บีกเกอร์", "ตาชั่งสปริง", "สายวัด"], answer: 2 },
+            { q: "วัตถุที่มีมวลมาก จะมีน้ำหนักเป็นอย่างไร?", choices: ["น้ำหนักน้อย", "น้ำหนักมาก", "ไม่มีน้ำหนัก", "น้ำหนักเปลี่ยนไปเรื่อยๆ"], answer: 1 },
+            { q: "หากไม่มีแรงโน้มถ่วงของโลก จะเกิดอะไรขึ้น?", choices: ["เราจะเดินได้เร็วขึ้น", "วัตถุทุกอย่างจะลอยอยู่ในอากาศ", "ฝนจะตกหนักกว่าเดิม", "น้ำหนักของวัตถุจะเพิ่มขึ้น"], answer: 1 },
+            { q: "แรง (Force) ในระบบสากล มีหน่วยวัดเป็นอะไร?", choices: ["กิโลกรัม (kg)", "เมตร (m)", "จูล (J)", "นิวตัน (N)"], answer: 3 },
+            { q: "นักวิทยาศาสตร์ผู้ค้นพบทฤษฎีแรงโน้มถ่วงคือใคร?", choices: ["อัลเบิร์ต ไอน์สไตน์", "ทอมัส เอดิสัน", "ไอแซก นิวตัน", "กาลิเลโอ กาลิเลอี"], answer: 2 },
+            { q: "มวล (Mass) และ น้ำหนัก (Weight) ต่างกันอย่างไร?", choices: ["เหมือนกันทุกประการ", "มวลเปลี่ยนตามที่ตั้ง น้ำหนักคงที่", "มวลคงที่ น้ำหนักเปลี่ยนตามแรงโน้มถ่วง", "มีหน่วยวัดเป็นนิวตันเหมือนกัน"], answer: 2 },
+            { q: "หากไปชั่งน้ำหนักบนดวงจันทร์ น้ำหนักจะเป็นอย่างไร?", choices: ["เท่าเดิม", "เพิ่มขึ้น", "ลดลง", "กลายเป็นศูนย์"], answer: 2 }
+        ];
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const bgImg = new Image();
+        bgImg.src = 'https://img1.pic.in.th/images/12213.png';
+
+        let gameState = 'LOGIN';
+        let score = 0;
+        let fuel = 100;
+        const maxFuel = 100;
+        let speed = 0;
+        let baseSpeed = 5;
+        let roadOffset = 0;
+        let frameCount = 0;
+        
+        let roadW = 0, roadX = 0, laneW = 0;
+
+        let player = {
+            targetLane: 1, 
+            currentLane: 1, 
+            y: 0,
+            width: 0,
+            height: 0,
+            hitTimer: 0
+        };
+
+        let obstacles = [];
+        let stars = [];
+        let currentQuestion = null;
+
+        const hud = document.getElementById('hud');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const fuelBar = document.getElementById('fuelBar');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            roadW = Math.min(canvas.width * 0.9, 450); 
+            roadX = (canvas.width - roadW) / 2;
+            laneW = roadW / 4;
+            
+            player.width = laneW * 0.7;
+            player.height = player.width * 1.8;
+            player.y = canvas.height - player.height - 70; 
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        window.addEventListener('keydown', (e) => {
+            if(gameState !== 'PLAYING') return;
+            if((e.key === 'ArrowLeft' || e.key === 'a') && player.targetLane > 0) player.targetLane--;
+            if((e.key === 'ArrowRight' || e.key === 'd') && player.targetLane < 3) player.targetLane++;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if(gameState !== 'PLAYING') return;
+            const touchX = e.touches[0].clientX;
+            if (touchX < window.innerWidth / 2 && player.targetLane > 0) {
+                player.targetLane--;
+            } else if (touchX >= window.innerWidth / 2 && player.targetLane < 3) {
+                player.targetLane++;
+            }
+        });
+
+        function startGame() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            hud.classList.remove('hidden');
+            
+            score = 0;
+            fuel = 100;
+            baseSpeed = 6;
+            obstacles = [];
+            stars = [];
+            player.targetLane = 1;
+            player.currentLane = 1;
+            player.hitTimer = 0;
+            frameCount = 0;
+            gameState = 'PLAYING';
+        }
+
+        function drawCar(x, y, w, h, color) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.beginPath(); ctx.roundRect(4, 4, w, h, 8); ctx.fill();
+
+            ctx.fillStyle = '#111';
+            const tireW = w * 0.18;
+            const tireH = h * 0.25;
+            ctx.fillRect(-tireW/2, h*0.1, tireW, tireH); 
+            ctx.fillRect(w - tireW/2, h*0.1, tireW, tireH); 
+            ctx.fillRect(-tireW/2, h*0.65, tireW, tireH); 
+            ctx.fillRect(w - tireW/2, h*0.65, tireW, tireH); 
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, w, h, 10);
+            ctx.fill();
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.beginPath(); ctx.roundRect(w*0.1, h*0.2, w*0.8, h*0.2, 4); ctx.fill();
+            
+            ctx.fillStyle = '#334155';
+            ctx.beginPath(); ctx.roundRect(w*0.15, h*0.65, w*0.7, h*0.15, 4); ctx.fill();
+
+            ctx.fillStyle = '#fef08a';
+            ctx.fillRect(w*0.1, 2, w*0.2, h*0.08);
+            ctx.fillRect(w*0.7, 2, w*0.2, h*0.08);
+
+            ctx.fillStyle = '#991b1b';
+            ctx.fillRect(w*0.1, h-6, w*0.25, 4);
+            ctx.fillRect(w*0.65, h-6, w*0.25, 4);
+
+            ctx.restore();
+        }
+
+        function update() {
+            frameCount++;
+            
+            player.currentLane += (player.targetLane - player.currentLane) * 0.25;
+            const playerRealX = roadX + (player.currentLane * laneW) + (laneW - player.width)/2;
+
+            roadOffset += baseSpeed;
+            if (roadOffset >= 100) roadOffset = 0;
+
+            score += baseSpeed * 0.1;
+            fuel -= 0.04;
+            speed = Math.floor(80 + (baseSpeed - 5) * 15);
+
+            if (fuel <= 0) {
+                gameOver("น้ำมันเกลี้ยง!");
+                return;
+            }
+
+            if (frameCount % 600 === 0 && baseSpeed < 20) baseSpeed += 0.5;
+
+            // --- ระบบ Smart Spawn: เพิ่มจำนวนรถ แต่เว้นระยะห่าง ---
+            if (obstacles.length < 6 && Math.random() < 0.03 + (baseSpeed * 0.001)) {
+                let spawnLane = Math.floor(Math.random() * 4);
+                let canSpawn = true;
+                let carsNearTop = 0;
+
+                for (let obs of obstacles) {
+                    // 1. ห้ามเกิดในเลนเดียวกันถ้ารถคันหน้ายังไปไม่ไกล (ระยะปลอดภัย 250px)
+                    if (obs.lane === spawnLane && obs.y < 250) {
+                        canSpawn = false;
+                        break;
+                    }
+                    // 2. นับจำนวนรถที่เพิ่งเกิดมาใหม่ๆ เพื่อป้องกันไม่ให้เกิดกำแพงบังมิดทุกเลน
+                    if (obs.y < 150) {
+                        carsNearTop++;
+                    }
+                }
+
+                // ถ้ามีรถเกิดใกล้ๆ กันในแนวนอน 2 คันแล้ว คันที่ 3 จะไม่ให้เกิดพร้อมกัน เพื่อให้มีช่องว่างให้หลบ
+                if (carsNearTop >= 2) canSpawn = false;
+
+                if (canSpawn) {
+                    const w = laneW * 0.7;
+                    const h = w * 1.8;
+                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#64748b', '#e879f9', '#ffffff'];
+                    obstacles.push({
+                        lane: spawnLane,
+                        y: -h,
+                        w: w, h: h,
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        speed: baseSpeed * 0.4 + Math.random() * 2 
+                    });
+                }
+            }
+
+            // สุ่มเกิดดาว (เพิ่มโอกาสขึ้นเล็กน้อย)
+            if (Math.random() < 0.02 && stars.length === 0) {
+                let spawnLane = Math.floor(Math.random() * 4);
+                let canSpawnStar = true;
+                // อย่าให้ดาวเกิดทับรถที่เพิ่งเกิด
+                for (let obs of obstacles) {
+                    if (obs.lane === spawnLane && obs.y < 200) { canSpawnStar = false; break; }
+                }
+                
+                if (canSpawnStar) {
+                    stars.push({
+                        lane: spawnLane,
+                        y: -50,
+                        size: laneW * 0.5
+                    });
+                }
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += (baseSpeed - obs.speed);
+                const obsRealX = roadX + (obs.lane * laneW) + (laneW - obs.w)/2;
+
+                if (player.hitTimer <= 0 &&
+                    playerRealX < obsRealX + obs.w && playerRealX + player.width > obsRealX &&
+                    player.y < obs.y + obs.h && player.y + player.height > obs.y) 
+                {
+                    fuel -= 20; 
+                    player.hitTimer = 30; 
+                    obstacles.splice(i, 1);
+                    if (fuel <= 0) { gameOver("รถชนพัง! น้ำมันรั่วจนหมด"); return; }
+                    continue;
+                }
+                if (obs.y > canvas.height) obstacles.splice(i, 1);
+            }
+
+            for (let i = stars.length - 1; i >= 0; i--) {
+                let star = stars[i];
+                star.y += baseSpeed;
+                const starRealX = roadX + (star.lane * laneW) + (laneW/2); 
+
+                if (playerRealX < starRealX + star.size/2 && playerRealX + player.width > starRealX - star.size/2 &&
+                    player.y < star.y + star.size/2 && player.y + player.height > star.y - star.size/2) 
+                {
+                    stars.splice(i, 1);
+                    triggerQuiz();
+                    return;
+                }
+                if (star.y > canvas.height) stars.splice(i, 1);
+            }
+
+            if (player.hitTimer > 0) player.hitTimer--;
+            updateHUD();
+        }
+
+        function draw() {
+            if (bgImg.complete) {
+                const ratio = Math.max(canvas.width / bgImg.width, canvas.height / bgImg.height);
+                ctx.drawImage(bgImg, (canvas.width - bgImg.width * ratio)/2, (canvas.height - bgImg.height * ratio)/2, bgImg.width * ratio, bgImg.height * ratio);
+            } else {
+                ctx.fillStyle = '#1e293b'; ctx.fillRect(0,0, canvas.width, canvas.height);
+            }
+
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(roadX, 0, roadW, canvas.height);
+
+            const stripH = 40;
+            for (let y = -stripH + (roadOffset % (stripH*2)); y < canvas.height; y += stripH*2) {
+                ctx.fillStyle = '#dc2626'; ctx.fillRect(roadX - 8, y, 8, stripH);
+                ctx.fillStyle = '#f8fafc'; ctx.fillRect(roadX - 8, y + stripH, 8, stripH);
+                ctx.fillStyle = '#dc2626'; ctx.fillRect(roadX + roadW, y, 8, stripH);
+                ctx.fillStyle = '#f8fafc'; ctx.fillRect(roadX + roadW, y + stripH, 8, stripH);
+            }
+
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            for(let i=1; i<4; i++) {
+                const lineX = roadX + (laneW * i) - 2;
+                for (let y = -100 + roadOffset; y < canvas.height; y += 100) {
+                    ctx.fillRect(lineX, y, 4, 45);
+                }
+            }
+
+            stars.forEach(star => {
+                const starRealX = roadX + (star.lane * laneW) + (laneW/2);
+                ctx.save();
+                ctx.translate(starRealX, star.y);
+                ctx.scale(1 + Math.sin(Date.now()/150)*0.1, 1 + Math.sin(Date.now()/150)*0.1);
+                ctx.font = `${star.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('⭐', 0, 0);
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "yellow";
+                ctx.fillText('⭐', 0, 0);
+                ctx.restore();
+            });
+
+            obstacles.forEach(obs => {
+                const obsRealX = roadX + (obs.lane * laneW) + (laneW - obs.w)/2;
+                drawCar(obsRealX, obs.y, obs.w, obs.h, obs.color);
+            });
+
+            if (player.hitTimer === 0 || Math.floor(Date.now() / 100) % 2 === 0) {
+                const playerRealX = roadX + (player.currentLane * laneW) + (laneW - player.width)/2;
+                drawCar(playerRealX, player.y, player.width, player.height, '#ef4444');
+            }
+
+            if (player.hitTimer > 0) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                update();
+            }
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateHUD() {
+            scoreDisplay.innerText = Math.floor(score);
+            speedDisplay.innerText = speed;
+            
+            fuelBar.style.width = `${Math.max(0, fuel)}%`;
+            if (fuel > 50) fuelBar.className = "h-full w-full bg-green-500";
+            else if (fuel > 20) fuelBar.className = "h-full w-full bg-yellow-400";
+            else fuelBar.className = "h-full w-full bg-red-600 animate-pulse";
+        }
+
+        function triggerQuiz() {
+            gameState = 'QUIZ';
+            const quizScreen = document.getElementById('quizScreen');
+            const choicesContainer = document.getElementById('choicesContainer');
+            const feedbackText = document.getElementById('feedbackText');
+            
+            quizScreen.classList.remove('hidden');
+            feedbackText.classList.add('hidden');
+            choicesContainer.innerHTML = ''; 
+            
+            currentQuestion = scienceQuestions[Math.floor(Math.random() * scienceQuestions.length)];
+            document.getElementById('questionText').innerText = currentQuestion.q;
+            
+            currentQuestion.choices.forEach((choice, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full bg-blue-700 hover:bg-blue-600 text-white py-2 px-3 rounded-xl shadow font-medium text-sm md:text-base text-left transition transform active:scale-95';
+                btn.innerText = choice;
+                btn.onclick = () => answerQuiz(index, btn);
+                choicesContainer.appendChild(btn);
+            });
+        }
+
+        function answerQuiz(selectedIndex, btnElement) {
+            const choicesContainer = document.getElementById('choicesContainer');
+            const feedbackText = document.getElementById('feedbackText');
+            const buttons = choicesContainer.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+
+            feedbackText.classList.remove('hidden');
+            
+            if (selectedIndex === currentQuestion.answer) {
+                feedbackText.innerText = "✅ ถูกต้อง! เก่งมาก เติมน้ำมัน +30";
+                feedbackText.className = "mt-3 text-base md:text-lg font-bold bg-green-600 text-white py-2 px-3 rounded-lg";
+                btnElement.classList.replace('bg-blue-700', 'bg-green-500');
+                score += 1500;
+                fuel = Math.min(maxFuel, fuel + 30);
+            } else {
+                feedbackText.innerText = "❌ ผิดครับ! คำตอบ: " + currentQuestion.choices[currentQuestion.answer];
+                feedbackText.className = "mt-3 text-sm md:text-base font-bold bg-red-600 text-white py-2 px-3 rounded-lg";
+                btnElement.classList.replace('bg-blue-700', 'bg-red-500');
+                buttons[currentQuestion.answer].classList.replace('bg-blue-700', 'bg-green-500'); 
+                fuel = Math.max(0, fuel - 10);
+                
+                document.getElementById('quizScreen').classList.add('shake');
+                setTimeout(()=> document.getElementById('quizScreen').classList.remove('shake'), 500);
+            }
+
+            updateHUD();
+            
+            setTimeout(() => {
+                document.getElementById('quizScreen').classList.add('hidden');
+                if(fuel <= 0) {
+                    gameOver("น้ำมันหมดระหว่างตอบคำถาม!");
+                } else {
+                    gameState = 'PLAYING';
+                    player.hitTimer = 30; 
+                }
+            }, 2500);
+        }
+
+        function gameOver(reason) {
+            gameState = 'GAMEOVER';
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('finalScore').innerText = Math.floor(score);
+            document.getElementById('gameOverReason').innerText = reason;
+        }
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            const nameInput = document.getElementById('playerName').value.trim();
+            document.getElementById('playerNameDisplay').innerText = nameInput || 'ผู้เล่นนิรนาม';
+            startGame();
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        gameLoop();
+        
+    </script>
+</body>
+</html>
