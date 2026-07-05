@@ -25,6 +25,11 @@
 </head>
 <body class="text-white">
 
+    <!-- แท็ก Audio สำหรับ BGM เปลี่ยนลิงก์ให้ใช้งานได้จริงและเสถียรขึ้น -->
+    <audio id="bgMusic" loop preload="auto" crossorigin="anonymous">
+        <source src="https://cdn.pixabay.com/audio/2023/01/20/audio_a387171a9c.mp3" type="audio/mpeg">
+    </audio>
+
     <canvas id="gameCanvas"></canvas>
 
     <div id="ui-layer">
@@ -35,8 +40,11 @@
                 <p>คะแนน: <span id="scoreDisplay" class="text-white">0</span></p>
                 <p>ความเร็ว: <span id="speedDisplay" class="text-white">0</span> km/h</p>
             </div>
-            <div class="text-right">
-                <p>น้ำมัน (FUEL)</p>
+            <div class="text-right flex flex-col items-end">
+                <div class="flex items-center gap-2">
+                    <button id="soundToggle" class="pointer-events-auto bg-gray-800 border border-gray-500 rounded-full w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-sm md:text-base hover:bg-gray-700 transition">🔊</button>
+                    <p>น้ำมัน (FUEL)</p>
+                </div>
                 <div class="w-20 md:w-32 h-4 md:h-5 border-2 border-white bg-gray-800 rounded mt-1 overflow-hidden shadow-lg">
                     <div id="fuelBar" class="h-full bg-green-500 w-full transition-all duration-300"></div>
                 </div>
@@ -109,6 +117,22 @@
             { q: "มวล (Mass) และ น้ำหนัก (Weight) ต่างกันอย่างไร?", choices: ["เหมือนกันทุกประการ", "มวลเปลี่ยนตามที่ตั้ง น้ำหนักคงที่", "มวลคงที่ น้ำหนักเปลี่ยนตามแรงโน้มถ่วง", "มีหน่วยวัดเป็นนิวตันเหมือนกัน"], answer: 2 },
             { q: "หากไปชั่งน้ำหนักบนดวงจันทร์ น้ำหนักจะเป็นอย่างไร?", choices: ["เท่าเดิม", "เพิ่มขึ้น", "ลดลง", "กลายเป็นศูนย์"], answer: 2 }
         ];
+
+        // --- ระบบ Audio BGM ---
+        const bgMusic = document.getElementById('bgMusic');
+        const soundToggle = document.getElementById('soundToggle');
+        let isSoundOn = true;
+
+        soundToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // ป้องกันไม่ให้การคลิกทะลุไปโดนเกม
+            isSoundOn = !isSoundOn;
+            soundToggle.innerText = isSoundOn ? '🔊' : '🔇';
+            if (isSoundOn) {
+                if (gameState === 'PLAYING') bgMusic.play().catch(e => console.log('Auto-play prevented'));
+            } else {
+                bgMusic.pause();
+            }
+        });
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -189,6 +213,15 @@
             player.hitTimer = 0;
             frameCount = 0;
             gameState = 'PLAYING';
+            
+            // เริ่มเล่นเพลง
+            if (isSoundOn) {
+                bgMusic.volume = 0.6; // ปรับระดับเสียงที่เหมาะสม
+                let playPromise = bgMusic.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => console.log('Audio play blocked:', e));
+                }
+            }
         }
 
         function drawCar(x, y, w, h, color) {
@@ -255,18 +288,15 @@
                 let carsNearTop = 0;
 
                 for (let obs of obstacles) {
-                    // 1. ห้ามเกิดในเลนเดียวกันถ้ารถคันหน้ายังไปไม่ไกล (ระยะปลอดภัย 250px)
                     if (obs.lane === spawnLane && obs.y < 250) {
                         canSpawn = false;
                         break;
                     }
-                    // 2. นับจำนวนรถที่เพิ่งเกิดมาใหม่ๆ เพื่อป้องกันไม่ให้เกิดกำแพงบังมิดทุกเลน
                     if (obs.y < 150) {
                         carsNearTop++;
                     }
                 }
 
-                // ถ้ามีรถเกิดใกล้ๆ กันในแนวนอน 2 คันแล้ว คันที่ 3 จะไม่ให้เกิดพร้อมกัน เพื่อให้มีช่องว่างให้หลบ
                 if (carsNearTop >= 2) canSpawn = false;
 
                 if (canSpawn) {
@@ -283,11 +313,10 @@
                 }
             }
 
-            // สุ่มเกิดดาว (เพิ่มโอกาสขึ้นเล็กน้อย)
+            // สุ่มเกิดดาว
             if (Math.random() < 0.02 && stars.length === 0) {
                 let spawnLane = Math.floor(Math.random() * 4);
                 let canSpawnStar = true;
-                // อย่าให้ดาวเกิดทับรถที่เพิ่งเกิด
                 for (let obs of obstacles) {
                     if (obs.lane === spawnLane && obs.y < 200) { canSpawnStar = false; break; }
                 }
@@ -416,6 +445,10 @@
 
         function triggerQuiz() {
             gameState = 'QUIZ';
+            
+            // เบาเสียงเพลงลงตอนตอบคำถาม
+            if (isSoundOn) bgMusic.volume = 0.3;
+            
             const quizScreen = document.getElementById('quizScreen');
             const choicesContainer = document.getElementById('choicesContainer');
             const feedbackText = document.getElementById('feedbackText');
@@ -465,6 +498,10 @@
             
             setTimeout(() => {
                 document.getElementById('quizScreen').classList.add('hidden');
+                
+                // เร่งเสียงเพลงกลับมา
+                if (isSoundOn) bgMusic.volume = 1.0;
+                
                 if(fuel <= 0) {
                     gameOver("น้ำมันหมดระหว่างตอบคำถาม!");
                 } else {
@@ -476,6 +513,11 @@
 
         function gameOver(reason) {
             gameState = 'GAMEOVER';
+            
+            // หยุดเพลง
+            bgMusic.pause();
+            bgMusic.currentTime = 0;
+            
             document.getElementById('gameOverScreen').classList.remove('hidden');
             document.getElementById('finalScore').innerText = Math.floor(score);
             document.getElementById('gameOverReason').innerText = reason;
